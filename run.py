@@ -1,8 +1,12 @@
-from solar_system.simulation import SOLAR_SYSTEM, simulate_trajectories
-from solar_system.visualization import visualize_orbits
-from solar_system import utils
+from solar_system import simulation, visualization
 
 
-bodies = SOLAR_SYSTEM
-simulate_trajectories(bodies, *utils.get_dt_nsteps(total_years=10, step_days=1))
-visualize_orbits(bodies)
+def main():
+    bodies = simulation.SOLAR_SYSTEM
+    t_step = 1
+    simulation.simulate_trajectories(bodies, t_step=t_step, t_total_yrs=30)
+    visualization.animate_trajectories(bodies, t_step=t_step, days_per_frame=14)
+
+
+if __name__ == "__main__":
+    main()

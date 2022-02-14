@@ -16,21 +16,41 @@ class Body:
     m: float  # in M☉
     r_0: Vector  # in AU
     v_0: Vector  # in AU / yr
-    
+
     trajectory: Optional[NDArray] = None
 
     @property
-    def size_normalized(self) -> float:
-        """Only for plotting purposes!"""
+    def marker_size(self) -> float:
         def m_to_size_lin(m: float):
             M_EARTH = 333000
-            return (m * M_EARTH) ** (2/3)
+            return (m * M_EARTH) ** (2 / 3)
 
         sun_size_log = 400
-        return sun_size_log * np.log(1 + m_to_size_lin(self.m)) / np.log(1 + m_to_size_lin(1.0))
+        return (
+            sun_size_log
+            * np.log(1 + m_to_size_lin(self.m))
+            / np.log(1 + m_to_size_lin(1.0))
+        )
+
+    @property
+    def patch_radius(self) -> float:
+        sun_path_radius = 0.2  # ~ half the Mercury orbit
+        sun_real_radius = 1.0
+        mercury_path_radius = 0.01
+        mercury_real_radius = 1.65e-7 ** (1 / 3)  # up to a constant
+
+        radius_real = self.m ** (1 / 3)
+
+        return np.interp(
+            [np.log(radius_real)],
+            [np.log(mercury_real_radius), np.log(sun_real_radius)],
+            [mercury_path_radius, sun_path_radius],
+        )
 
     def _assert_trajectory_calculated(self):
-        assert self.trajectory is not None, f"Trajectory is not calculated for body {self}"
+        assert (
+            self.trajectory is not None
+        ), f"Trajectory is not calculated for body {self}"
 
     @property
     def x_traj(self) -> NDArray:
@@ -41,6 +61,14 @@ class Body:
     def y_traj(self) -> NDArray:
         self._assert_trajectory_calculated()
         return self.trajectory[:, 1]
+
+    @property
+    def trajectory_length(self) -> int:
+        self._assert_trajectory_calculated()
+        return self.trajectory.shape[0]
+
+    def position(self, step: int) -> NDArray:
+        return self.trajectory[step, 0:2]
 
 
 G = 39.478  # AU^3 M☉^-1 yr^-2
@@ -69,12 +97,13 @@ def random_body_state_on_elliptical_orbit(
     b = a * np.sqrt(1 - ecc**2)
     x_p_canonic = r * np.cos(orbit_phase) - linear_ecc
     y_p_canonic = r * np.sin(orbit_phase)
-    tangent_angle_canonic = np.arctan(- (x_p_canonic * b ** 2) / (y_p_canonic * a ** 2))
+    tangent_angle_canonic = np.arctan(-(x_p_canonic * b**2) / (y_p_canonic * a**2))
     if y_p_canonic < 0:
         tangent_angle_canonic += np.pi
     tangent_angle = tangent_angle_canonic + major_axis_angle
     v = np.sqrt(G * center_mass * (2 / r - 1 / a))  # vis-viva equation
-    v_0 = np.array([v * np.cos(tangent_angle), v * np.sin(tangent_angle)])
+    # -1 is for counter-clockwise rotation
+    v_0 = -1 * np.array([v * np.cos(tangent_angle), v * np.sin(tangent_angle)])
     if inverse:
         v_0 = -1 * v_0
 
@@ -135,15 +164,20 @@ SOLAR_SYSTEM = [
     Body(
         "Neptune",
         "#61739C",
-        4.36e-5,
+        5.15e-5,
         *random_body_state_on_elliptical_orbit(a=30.07, ecc=0.008),
     ),
 ]
 
 
-def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
+def simulate_trajectories(bodies: list[Body], t_step: float, t_total_yrs: float):
     """Credit: _calc_trajectories
     @ https://github.com/robolamp/3_body_problem_bot/blob/master/generate_3_body_simulation.py
+
+    Args:
+        bodies (list[Body])
+        t_step_days (float): simulation step in days
+        t_total_yrs (float): total simulation time in years
     """
     n_bodies = len(bodies)
 
@@ -156,9 +190,9 @@ def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
 
     def decode_state(state: NDArray) -> tuple[NDArray, ...]:
         x = state[0:n_bodies]
-        y = state[n_bodies:2 *n_bodies]
-        xdot = state[2 * n_bodies:3 *n_bodies]
-        ydot = state[3 * n_bodies:]
+        y = state[n_bodies : 2 * n_bodies]
+        xdot = state[2 * n_bodies : 3 * n_bodies]
+        ydot = state[3 * n_bodies :]
         return x, y, xdot, ydot
 
     def newtons_law(t: float, state: NDArray) -> NDArray:
@@ -168,13 +202,13 @@ def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
         y = y.reshape((-1, 1))
         delta_x_mat = x - x.T
         delta_y_mat = y - y.T
-        dist_mat = np.sqrt(delta_x_mat ** 2 + delta_y_mat ** 2)
+        dist_mat = np.sqrt(delta_x_mat**2 + delta_y_mat**2)
 
         def acceleration(delta_coords_mat: NDArray):
-            force_components = - G * m_mat * delta_coords_mat / (dist_mat ** 3)
+            force_components = -G * m_mat * delta_coords_mat / (dist_mat**3)
             # no self-action!
-            force_components[np.isnan(force_components)] = 0.
-            force_components[np.isinf(force_components)] = 0.
+            force_components[np.isnan(force_components)] = 0.0
+            force_components[np.isinf(force_components)] = 0.0
             return np.sum(force_components, axis=1) / m_vec
 
         return encode_state(
@@ -184,10 +218,11 @@ def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
             ydot=acceleration(delta_y_mat),
         )
 
+    n_steps = int(t_total_yrs * 365 / t_step)
     solution = solve_ivp(
         fun=newtons_law,
-        t_span=[0, dt * n_steps],
-        t_eval=np.linspace(0, dt * n_steps, n_steps),
+        t_span=[0, t_total_yrs],
+        t_eval=np.linspace(0, t_total_yrs, n_steps),
         y0=encode_state(
             x=np.array([b.r_0[0] for b in bodies]),
             y=np.array([b.r_0[1] for b in bodies]),
@@ -215,5 +250,8 @@ def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
 
 if __name__ == "__main__":
     bodies = SOLAR_SYSTEM
-    simulate_trajectories(bodies, 1 / 365, 365)
-    print(bodies[1].trajectory)
+    for b in bodies:
+        print(b)
+        print(b.patch_radius)
+    # simulate_trajectories(bodies, 1 / 365, 365)
+    # print(bodies[1].trajectory)
