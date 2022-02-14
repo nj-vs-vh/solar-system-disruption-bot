@@ -1,6 +1,6 @@
 from matplotlib import pyplot as plt
 
-from .simulation import Body
+from solar_system.simulation import Body
 
 
 FIGSIZE = (10, 10)
