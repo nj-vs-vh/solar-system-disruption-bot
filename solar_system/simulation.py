@@ -19,6 +19,30 @@ class Body:
     
     trajectory: Optional[NDArray] = None
 
+    @property
+    def size_normalized(self) -> float:
+        """Only for plotting purposes!"""
+        def m_to_size_lin(m: float):
+            M_EARTH = 333000
+            return (m * M_EARTH) ** (2/3)
+
+        sun_size_log = 400
+        return sun_size_log * np.log(1 + m_to_size_lin(self.m)) / np.log(1 + m_to_size_lin(1.0))
+
+    def _assert_trajectory_calculated(self):
+        assert self.trajectory is not None, f"Trajectory is not calculated for body {self}"
+
+    @property
+    def x_traj(self) -> NDArray:
+        self._assert_trajectory_calculated()
+        return self.trajectory[:, 0]
+
+    @property
+    def y_traj(self) -> NDArray:
+        self._assert_trajectory_calculated()
+        return self.trajectory[:, 1]
+
+
 G = 39.478  # AU^3 M☉^-1 yr^-2
 
 
@@ -61,23 +85,59 @@ def random_body_state_on_elliptical_orbit(
 SOLAR_SYSTEM = [
     Body(
         "Sun",
-        "#ffed69",
+        "#FEB238",
         1.0,
         r_0=np.array([0.0, 0.0]),
         v_0=np.array([0.0, 0.0]),
     ),
     Body(
         "Mercury",
-        "#ff7a66",
-        1.652e-7,
+        "#7F7A79",
+        1.65e-7,
         *random_body_state_on_elliptical_orbit(a=0.387, ecc=0.206),
     ),
     Body(
         "Venus",
-        "#de8d00",
+        "#C8A972",
         2.45e-6,
         *random_body_state_on_elliptical_orbit(a=0.723, ecc=0.007),
-    )
+    ),
+    Body(
+        "Earth",
+        "#4A6F99",
+        3.45e-6,
+        *random_body_state_on_elliptical_orbit(a=1.0, ecc=0.017),
+    ),
+    Body(
+        "Mars",
+        "#FD8660",
+        3.21e-7,
+        *random_body_state_on_elliptical_orbit(a=1.523, ecc=0.093),
+    ),
+    Body(
+        "Jupiter",
+        "#BE955F",
+        9.55e-4,
+        *random_body_state_on_elliptical_orbit(a=5.204, ecc=0.0489),
+    ),
+    Body(
+        "Saturn",
+        "#F3E2AE",
+        2.86e-4,
+        *random_body_state_on_elliptical_orbit(a=9.583, ecc=0.0565),
+    ),
+    Body(
+        "Uranus",
+        "#66747D",
+        4.36e-5,
+        *random_body_state_on_elliptical_orbit(a=19.191, ecc=0.047),
+    ),
+    Body(
+        "Neptune",
+        "#61739C",
+        4.36e-5,
+        *random_body_state_on_elliptical_orbit(a=30.07, ecc=0.008),
+    ),
 ]
 
 
@@ -106,16 +166,16 @@ def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
 
         x = x.reshape((-1, 1))
         y = y.reshape((-1, 1))
-        delta_x_mat = x @ x.T
-        delta_y_mat = y @ y.T
+        delta_x_mat = x - x.T
+        delta_y_mat = y - y.T
         dist_mat = np.sqrt(delta_x_mat ** 2 + delta_y_mat ** 2)
 
         def acceleration(delta_coords_mat: NDArray):
-            forces = G * m_mat * delta_coords_mat / (dist_mat ** 3)
+            force_components = - G * m_mat * delta_coords_mat / (dist_mat ** 3)
             # no self-action!
-            forces[np.isnan(forces)] = 0.
-            forces[np.isinf(forces)] = 0.
-            return np.sum(forces, axis=1) / m_vec
+            force_components[np.isnan(force_components)] = 0.
+            force_components[np.isinf(force_components)] = 0.
+            return np.sum(force_components, axis=1) / m_vec
 
         return encode_state(
             x=xdot,
@@ -134,17 +194,21 @@ def simulate_trajectories(bodies: list[Body], dt: float, n_steps: int):
             xdot=np.array([b.v_0[0] for b in bodies]),
             ydot=np.array([b.v_0[1] for b in bodies]),
         ),
-        atol=1e-6,
-        method="RK45",  # DOP853
+        # atol=1e-6,
+        method="DOP853",
     )
 
     if not solution.success:
         raise RuntimeError(solution.message)
+    x, y, xdot, ydot = decode_state(solution.y)
     for i, body in enumerate(bodies):
-        traj_x: NDArray = solution.y[i, :]
-        traj_y: NDArray = solution.y[n_bodies + i, :]
         body.trajectory = np.concatenate(
-            [traj_x.reshape((-1, 1)), traj_y.reshape((-1, 1))],
+            [
+                x[i, :].reshape((-1, 1)),
+                y[i, :].reshape((-1, 1)),
+                xdot[i, :].reshape((-1, 1)),
+                ydot[i, :].reshape((-1, 1)),
+            ],
             axis=1,
         )
 
