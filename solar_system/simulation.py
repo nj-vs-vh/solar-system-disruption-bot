@@ -11,6 +11,9 @@ from numpy.typing import NDArray
 Vector = NDArray[np.float64]
 
 
+NO_VALUE = object()
+
+
 @dataclass
 class Body:
     name: str
@@ -20,7 +23,7 @@ class Body:
     v_0: Vector  # in AU / yr
 
     radius: float = None  # plotting radius, not physical!
-    control_body_name: str = None
+    control_body_name: Optional[str] = NO_VALUE
 
     trajectory: Optional[NDArray] = None  # size: (nsteps x 4), 0 - x, 1 - y, 2 - vx, 3 - vy
     trajectory_interestness: Optional[NDArray] = None
@@ -39,7 +42,7 @@ class Body:
                 [np.log(mercury_real_radius), np.log(sun_real_radius)],
                 [mercury_plot_radius, sun_plot_radius],
             )
-        if self.control_body_name is None:
+        if self.control_body_name is NO_VALUE:
             self.control_body_name = self.name
 
     def successor(self) -> Body:
@@ -54,7 +57,7 @@ class Body:
 
     @property
     def marker_size(self) -> float:
-        return 1e4 * self.radius ** 2
+        return 1e4 * self.radius**2
 
     def _assert_trajectory_calculated(self):
         assert self.trajectory is not None, f"Trajectory is not calculated for body {self}"
@@ -270,23 +273,27 @@ def concatenate_trajectories(bodies: list[Body]) -> NDArray:
     return np.concatenate([traj_x_all.reshape((-1, 1)), traj_y_all.reshape((-1, 1))], axis=1)
 
 
-def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str]:
+def random_between(min_: float, max_: float) -> float:
+    return min_ + np.random.random() * (max_ - min_)
+
+
+def generate_disruption(bodies: list[Body], t_disruption_years: float) -> tuple[list[Body], list[Body], str]:
     # will be simulated further without disruption
     control = [b.successor() for b in bodies]
     to_disrupt = [b.successor() for b in bodies]
     disrupted = to_disrupt.copy()
 
-    SPLIT_PROB = 0.5
+    SPLIT_PROB = 0.4
     MAX_SPLIT_TO = 6
-    MAX_SPLIT_BODIES = 3
+    MAX_SPLIT_BODIES = 5
     SPLIT_ENERGY_MIN = 0.2  # relative to debris potential energy after split
     SPLIT_ENERGY_MAX = 0.9
 
-    MAGIC_WEIGHT_PROB = 0.2
-    MAX_MAGIC_WEIGHTS = 2
-
-    INTERLOPER_PROB = 0.3
-    MAX_INTERLOPERS = 5
+    MAX_VISITORS = 3
+    VISITOR_MIN_MASS = 0.1
+    VISITOR_MAX_MASS = 2
+    VISITOR_R_SPAWN_MIN = 45
+    VISITOR_R_SPAWN_MAX = 70
 
     descriptions: list[str] = []
 
@@ -301,7 +308,7 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
             n_split = np.random.randint(2, MAX_SPLIT_TO)
             split_bodies_info.append((split_body.name, n_split))
             debris_weights = np.random.random((n_split,))
-            radii_debris: NDArray = ((split_body.radius ** 3) * debris_weights / debris_weights.sum()) ** (1/3)
+            radii_debris: NDArray = ((split_body.radius**3) * debris_weights / debris_weights.sum()) ** (1 / 3)
             m_debris: NDArray = split_body.m * debris_weights / debris_weights.sum()
             m_debris = m_debris.reshape((-1, 1))
             # debris positions in the COM coordinate system, uniformly across r_start ring
@@ -320,8 +327,8 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
             for i in range(n_split - 1):
                 p_phi_min = phis[i] - phi_step * 0.45  # generally everyone is going outward
                 p_phi_max = phis[i] + phi_step * 0.45
-                p_phi = p_phi_min + np.random.random() * (p_phi_max - p_phi_min)
-                p_len = np.random.random()
+                p_phi = random_between(p_phi_min, p_phi_max)
+                p_len = random_between(0, 1)
                 p_debris[i, 0] = p_len * np.cos(p_phi)
                 p_debris[i, 1] = p_len * np.sin(p_phi)
             p_debris[-1, :] = -(p_debris[:-1, :]).sum(axis=0)  # conservation of momentum
@@ -332,11 +339,13 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
             potential_energy_contributions[np.isinf(potential_energy_contributions)] = 0.0
             potential_energy_contributions[np.isnan(potential_energy_contributions)] = 0.0
             potential_energy = potential_energy_contributions.sum()
-            debris_kinetic_energy = - potential_energy * (
-                SPLIT_ENERGY_MIN + np.random.random() * (SPLIT_ENERGY_MAX - SPLIT_ENERGY_MIN)
-            )
+            debris_kinetic_energy = -potential_energy * random_between(SPLIT_ENERGY_MIN, SPLIT_ENERGY_MAX)
             generated_kinetic_energy = (0.5 * (p_debris[:, 0] ** 2 + p_debris[:, 1] ** 2) / m_debris.T).sum()
-            print(f"Debris energy is {100 * debris_kinetic_energy / np.abs(potential_energy):.2f} % of gravitational potential energy")
+            print(
+                f"{split_body.name} shuttered into {n_split} pieces: "
+                + f"{100 * debris_kinetic_energy / np.abs(potential_energy):.2f} "
+                + "% of gravitational potential energy converted to kinetic"
+            )
             p_debris = p_debris * np.sqrt(
                 debris_kinetic_energy / generated_kinetic_energy
             )  # energy deposit from explosion
@@ -344,7 +353,7 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
             for i in range(n_split):
                 disrupted.append(
                     Body(
-                        name=f"{split_body.name} debris #{i}",
+                        name=f"{split_body.name} debris #{i+1}",
                         color=split_body.color,
                         m=m_debris[i, 0],
                         r_0=r_debris[i, :] + split_body.r_0,
@@ -358,6 +367,33 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
         descriptions.append(
             ", ".join([f"{name} is shattered into {n_split} pieces" for name, n_split in split_bodies_info])
         )
+
+    n_visitors = np.random.randint(1, MAX_VISITORS)
+    visitor_colors = ["#114a6f", "#459eb0", "#904449", "#db8183"][:n_visitors]
+    visitor_masses = []
+    for i in range(n_visitors):
+        r_spawn = random_between(VISITOR_R_SPAWN_MIN, VISITOR_R_SPAWN_MAX)
+        phi_spawn = random_between(0, 2 * np.pi)
+        t_impact = 0.3 + np.random.random() * 0.3 * t_disruption_years
+        v_spawn = r_spawn / t_impact
+        delta_theta = np.arctan(30 / r_spawn)
+        theta = phi_spawn + np.pi + random_between(-delta_theta, delta_theta)
+        visitor_mass = np.exp(random_between(np.log(VISITOR_MIN_MASS), np.log(VISITOR_MAX_MASS)))
+        visitor_masses.append(visitor_mass)
+        print(f"Visitor with mass {visitor_mass}, R_spawn = {r_spawn}, v_spawn = {v_spawn}")
+        disrupted.append(
+            Body(
+                name=f"Visitor #{i+1}",
+                color=visitor_colors[i],
+                m=visitor_mass,
+                r_0=np.array([r_spawn * np.cos(phi_spawn), r_spawn * np.sin(phi_spawn)]),
+                v_0=np.array([v_spawn * np.cos(theta), v_spawn * np.sin(theta)]),
+                control_body_name=None,
+            )
+        )
+
+    masses_str = ', '.join([f'{m:.1f}' for m in visitor_masses])
+    descriptions.append(f"{n_visitors} visitors with masses {masses_str} M☉")
 
     return disrupted, control, ";".join(descriptions)
 

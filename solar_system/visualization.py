@@ -40,8 +40,8 @@ class DrawedBody:
 
     @classmethod
     def from_body(cls, b: Body, ax: plt.Axes):
-        (traj_line_major,) = ax.plot([b.r_0[0]], [b.r_0[1]], color=b.color, linewidth=1.0, animated=True, visible=False)
-        (traj_line_minor,) = ax.plot([b.r_0[0]], [b.r_0[1]], color=b.color, linewidth=0.3, animated=True, visible=False)
+        (traj_line_major,) = ax.plot([b.r_0[0]], [b.r_0[1]], color=b.color, linewidth=1.5, animated=True, visible=False)
+        (traj_line_minor,) = ax.plot([b.r_0[0]], [b.r_0[1]], color=b.color, linewidth=0.6, animated=True, visible=False)
         body_dot = Circle((b.r_0), radius=b.radius, color=b.color, animated=True, visible=False)
         ax.add_patch(body_dot)
         return DrawedBody(b, traj_line_major, traj_line_minor, body_dot)
@@ -53,7 +53,7 @@ class DrawedBody:
 
 @dataclass
 class Camera:
-    center: tuple[float, float]
+    center: NDArray
     full_halfwidth: float
     scale: float
 
@@ -62,13 +62,14 @@ class Camera:
         trajectories = concatenate_trajectories(bodies)
         max_radius = np.max(np.sqrt(trajectories[:, 0] ** 2 + trajectories[:, 1] ** 2))
         return Camera(
-            center=(0, 0),
+            center=np.array([0, 0]),
             full_halfwidth=max_radius,
             scale=1.05,
         )
 
     def apply(self, ax: plt.Axes):
-        x_c, y_c = self.center
+        x_c = self.center[0]
+        y_c = self.center[1]
         halfwidth = self.full_halfwidth * self.scale
         ax.set_xlim(x_c - halfwidth, x_c + halfwidth)
         ax.set_ylim(y_c - halfwidth, y_c + halfwidth)
@@ -87,15 +88,17 @@ def animate_trajectories(
     dbs_disrupted = [DrawedBody.from_body(b, ax) for b in bodies_disrupted]
 
     camera = Camera.from_bodies(bodies_calm)
+    camera_scale_calm_start = 1.01 / camera.full_halfwidth
+    camera_scale_calm_end = 1.01
     camera.apply(ax)
 
     n_calm_steps = bodies_calm[0].trajectory_length - 1
     n_disr_steps = bodies_disrupted[0].trajectory_length
     frame_count = int((n_calm_steps + n_disr_steps) * t_step / days_per_frame)
 
-    def update(frame: int) -> list[Artist]:
+    def update(frame: int):
         if frame % 30 == 0:
-            print(f"{100 * frame / frame_count : .2f} %")
+            print(f"{100 * frame / frame_count : .0f} %")
 
         current_day = frame * days_per_frame
         simulation_date = date.fromordinal(int(1 + current_day))
@@ -118,7 +121,7 @@ def animate_trajectories(
                         db.body.x_traj[major_line_start_step : min(current_step_local, length - 1)],
                         db.body.y_traj[major_line_start_step : min(current_step_local, length - 1)],
                     ),
-                    visible=True,
+                    visible=current_step_local < length,
                 )
                 db.traj_line_minor.set(
                     data=(
@@ -135,8 +138,12 @@ def animate_trajectories(
                     visible=current_step_local < length,
                 )
 
-        # camera.scale *= 0.995
-        # camera.apply(ax)
+        if current_step_global <= n_calm_steps:
+            camera.scale = np.exp(
+                np.log(camera_scale_calm_start)
+                + (np.log(camera_scale_calm_end) - np.log(camera_scale_calm_start)) * current_step_global / n_calm_steps
+            )
+            camera.apply(ax)
 
     anim = animation.FuncAnimation(
         fig=fig,

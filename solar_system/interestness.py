@@ -27,6 +27,8 @@ def calculate_trajectory_interestness(traj: NDArray, control_traj: NDArray, t_st
 def rate_bodies(bodies: list[Body], control_bodies: list[Body], t_step: float):
     control_bodies_by_name = {b.name: (b, i) for i, b in enumerate(control_bodies)}
     for b in bodies:
+        if b.control_body_name is None:
+            continue
         cb, _ = control_bodies_by_name[b.control_body_name]
         b.trajectory_interestness = calculate_trajectory_interestness(b.trajectory, cb.trajectory, t_step)
 
