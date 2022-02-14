@@ -279,7 +279,7 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
     SPLIT_PROB = 0.5
     MAX_SPLIT_TO = 6
     MAX_SPLIT_BODIES = 3
-    SPLIT_ENERGY_MIN = 0.1  # relative to debris potential energy after split
+    SPLIT_ENERGY_MIN = 0.2  # relative to debris potential energy after split
     SPLIT_ENERGY_MAX = 0.9
 
     MAGIC_WEIGHT_PROB = 0.2
@@ -294,7 +294,8 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
 
     for _ in range(MAX_SPLIT_BODIES):
         if np.random.random() < SPLIT_PROB:
-            split_idx = np.random.randint(low=0, high=len(to_disrupt))
+            # the sun is excluded here and cannot split!
+            split_idx = np.random.randint(low=1, high=len(to_disrupt))
             disrupted.pop(split_idx)
             split_body = to_disrupt.pop(split_idx)
             n_split = np.random.randint(2, MAX_SPLIT_TO)
@@ -331,9 +332,8 @@ def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str
             potential_energy_contributions[np.isinf(potential_energy_contributions)] = 0.0
             potential_energy_contributions[np.isnan(potential_energy_contributions)] = 0.0
             potential_energy = potential_energy_contributions.sum()
-            split_energy_max = SPLIT_ENERGY_MAX  # if split_body.name != "Sun" else SPLIT_ENERGY_MAX * 0.1
             debris_kinetic_energy = - potential_energy * (
-                SPLIT_ENERGY_MIN + np.random.random() * (split_energy_max - SPLIT_ENERGY_MIN)
+                SPLIT_ENERGY_MIN + np.random.random() * (SPLIT_ENERGY_MAX - SPLIT_ENERGY_MIN)
             )
             generated_kinetic_energy = (0.5 * (p_debris[:, 0] ** 2 + p_debris[:, 1] ** 2) / m_debris.T).sum()
             print(f"Debris energy is {100 * debris_kinetic_energy / np.abs(potential_energy):.2f} % of gravitational potential energy")
