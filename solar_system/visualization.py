@@ -14,7 +14,7 @@ from matplotlib.text import Text
 
 from numpy.typing import NDArray
 
-from solar_system.simulation import Body
+from solar_system.simulation import Body, concatenate_trajectories
 
 
 FIGSIZE = (10, 10)
@@ -62,24 +62,13 @@ class DrawedBody:
         (traj_line_minor,) = ax.plot(
             [b.r_0[0]], [b.r_0[1]], color=b.color, linewidth=0.3, animated=True
         )
-        body_dot = Circle((b.r_0), radius=b.patch_radius, color=b.color, animated=True)
+        body_dot = Circle((b.r_0), radius=b.radius, color=b.color, animated=True)
         ax.add_patch(body_dot)
         return DrawedBody(b, traj_line_major, traj_line_minor, body_dot)
 
     @property
     def artists(self) -> list[Artist]:
         return [self.traj_line_major, self.body_dot]
-
-
-def _concatenate_trajectories(bodies: list[Body]) -> NDArray:
-    traj_x_all = np.empty((0,))
-    traj_y_all = np.empty((0,))
-    for b in bodies:
-        traj_x_all = np.concatenate([traj_x_all, b.x_traj])
-        traj_y_all = np.concatenate([traj_y_all, b.x_traj])
-    return np.concatenate(
-        [traj_x_all.reshape((-1, 1)), traj_y_all.reshape((-1, 1))], axis=1
-    )
 
 
 @dataclass
@@ -89,13 +78,16 @@ class Camera:
     scale: float
 
     @classmethod
-    def default(cls, bodies: list[Body]) -> Camera:
-        trajectories = _concatenate_trajectories(bodies)
+    def from_bodies(cls, bodies: list[Body], static: bool = False) -> Camera:
+        if static:
+            trajectories = concatenate_trajectories(bodies)
+        else:
+            trajectories = np.concatenate([b.position(0).reshape((1, -1)) for b in bodies])
         max_radius = np.max(np.sqrt(trajectories[:, 0] ** 2 + trajectories[:, 1] ** 2))
         return Camera(
             center=(0, 0),
             full_halfwidth=max_radius,
-            scale=1.01,
+            scale=1.05,
         )
 
     def apply(self, ax: plt.Axes):
@@ -123,7 +115,7 @@ def animate_trajectories(
 
     dbs = [DrawedBody.from_body(b, ax) for b in bodies]
 
-    camera = Camera.default(bodies)
+    camera = Camera.from_bodies(bodies, static=False)
     camera.apply(ax)
 
     def update(frame: int) -> list[Artist]:
@@ -150,10 +142,10 @@ def animate_trajectories(
                 )
             )
             db.body_dot.set(center=(db.body.x_traj[current_step], db.body.y_traj[current_step]))
-        camera.scale *= 0.995
-        camera.apply(ax)
+        # camera.scale *= 0.995
+        # camera.apply(ax)
 
-    frame_count = int(bodies[0].trajectory_length * t_step / days_per_frame)
+    frame_count = int((bodies[0].trajectory_length - 1) * t_step / days_per_frame)
     anim = animation.FuncAnimation(
         fig=fig,
         func=update,

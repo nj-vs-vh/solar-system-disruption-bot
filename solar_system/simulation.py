@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -17,40 +19,45 @@ class Body:
     r_0: Vector  # in AU
     v_0: Vector  # in AU / yr
 
-    trajectory: Optional[NDArray] = None
+    radius: float = None  # plotting radius, not physical!
+    control_body_name: str = None
+
+    trajectory: Optional[NDArray] = None  # size: (nsteps x 4), 0 - x, 1 - y, 2 - vx, 3 - vy
+    trajectory_interestness: Optional[NDArray] = None
+
+    def __post_init__(self):
+        if self.radius is None:
+            sun_plot_radius = 0.2
+            sun_real_radius = 1.0
+            mercury_plot_radius = 0.05
+            mercury_real_radius = 1.65e-7 ** (1 / 3)  # up to a constant
+
+            radius_real = self.m ** (1 / 3)
+
+            self.radius = np.interp(
+                [np.log(radius_real)],
+                [np.log(mercury_real_radius), np.log(sun_real_radius)],
+                [mercury_plot_radius, sun_plot_radius],
+            )
+        if self.control_body_name is None:
+            self.control_body_name = self.name
+
+    def successor(self) -> Body:
+        self._assert_trajectory_calculated()
+        return Body(
+            name=self.name,
+            color=self.color,
+            m=self.m,
+            r_0=self.trajectory[-1, 0:2],
+            v_0=self.trajectory[-1, 2:],
+        )
 
     @property
     def marker_size(self) -> float:
-        def m_to_size_lin(m: float):
-            M_EARTH = 333000
-            return (m * M_EARTH) ** (2 / 3)
-
-        sun_size_log = 400
-        return (
-            sun_size_log
-            * np.log(1 + m_to_size_lin(self.m))
-            / np.log(1 + m_to_size_lin(1.0))
-        )
-
-    @property
-    def patch_radius(self) -> float:
-        sun_path_radius = 0.2  # ~ half the Mercury orbit
-        sun_real_radius = 1.0
-        mercury_path_radius = 0.01
-        mercury_real_radius = 1.65e-7 ** (1 / 3)  # up to a constant
-
-        radius_real = self.m ** (1 / 3)
-
-        return np.interp(
-            [np.log(radius_real)],
-            [np.log(mercury_real_radius), np.log(sun_real_radius)],
-            [mercury_path_radius, sun_path_radius],
-        )
+        return 1e4 * self.radius ** 2
 
     def _assert_trajectory_calculated(self):
-        assert (
-            self.trajectory is not None
-        ), f"Trajectory is not calculated for body {self}"
+        assert self.trajectory is not None, f"Trajectory is not calculated for body {self}"
 
     @property
     def x_traj(self) -> NDArray:
@@ -87,9 +94,7 @@ def random_body_state_on_elliptical_orbit(
 
     major_axis_angle = random_angle()  # oribital ellips is oriented randomly
     orbit_phase = random_angle()
-    r = (
-        a * (1 - ecc**2) / (1 + ecc * np.cos(orbit_phase))
-    )  # ellipse polar form relative to focus
+    r = a * (1 - ecc**2) / (1 + ecc * np.cos(orbit_phase))  # ellipse polar form relative to focus
     phi = major_axis_angle + orbit_phase
     r_0_local = np.array([r * np.cos(phi), r * np.sin(phi)])
 
@@ -183,7 +188,7 @@ def simulate_trajectories(bodies: list[Body], t_step: float, t_total_yrs: float)
 
     m_vec = np.array([body.m for body in bodies])
     m_col = m_vec.reshape((-1, 1))
-    m_mat = m_col @ m_col.T  # m_mat[i][j] = m_i * m_j
+    m_prod_mat = m_col @ m_col.T  # m_prod_mat[i][j] = m_i * m_j
 
     def encode_state(x: NDArray, y: NDArray, xdot: NDArray, ydot: NDArray) -> NDArray:
         return np.concatenate([x, y, xdot, ydot])
@@ -205,7 +210,7 @@ def simulate_trajectories(bodies: list[Body], t_step: float, t_total_yrs: float)
         dist_mat = np.sqrt(delta_x_mat**2 + delta_y_mat**2)
 
         def acceleration(delta_coords_mat: NDArray):
-            force_components = -G * m_mat * delta_coords_mat / (dist_mat**3)
+            force_components = -G * m_prod_mat * delta_coords_mat / (dist_mat**3)
             # no self-action!
             force_components[np.isnan(force_components)] = 0.0
             force_components[np.isinf(force_components)] = 0.0
@@ -229,7 +234,7 @@ def simulate_trajectories(bodies: list[Body], t_step: float, t_total_yrs: float)
             xdot=np.array([b.v_0[0] for b in bodies]),
             ydot=np.array([b.v_0[1] for b in bodies]),
         ),
-        # atol=1e-6,
+        atol=1e-5,
         method="DOP853",
     )
 
@@ -248,10 +253,116 @@ def simulate_trajectories(bodies: list[Body], t_step: float, t_total_yrs: float)
         )
 
 
-if __name__ == "__main__":
-    bodies = SOLAR_SYSTEM
+def _distance_matrix(x: NDArray, y: NDArray) -> NDArray:
+    x = x.reshape((-1, 1))
+    y = y.reshape((-1, 1))
+    delta_x_mat = x - x.T
+    delta_y_mat = y - y.T
+    return np.sqrt(delta_x_mat**2 + delta_y_mat**2)
+
+
+def concatenate_trajectories(bodies: list[Body]) -> NDArray:
+    traj_x_all = np.empty((0,))
+    traj_y_all = np.empty((0,))
     for b in bodies:
-        print(b)
-        print(b.patch_radius)
-    # simulate_trajectories(bodies, 1 / 365, 365)
-    # print(bodies[1].trajectory)
+        traj_x_all = np.concatenate([traj_x_all, b.x_traj])
+        traj_y_all = np.concatenate([traj_y_all, b.x_traj])
+    return np.concatenate([traj_x_all.reshape((-1, 1)), traj_y_all.reshape((-1, 1))], axis=1)
+
+
+def generate_disruption(bodies: list[Body]) -> tuple[list[Body], list[Body], str]:
+    # will be simulated further without disruption
+    control = [b.successor() for b in bodies]
+    to_disrupt = [b.successor() for b in bodies]
+    disrupted = to_disrupt.copy()
+
+    SPLIT_PROB = 0.5
+    MAX_SPLIT_TO = 6
+    MAX_SPLIT_BODIES = 3
+    SPLIT_ENERGY_MIN = 0.1  # relative to debris potential energy after split
+    SPLIT_ENERGY_MAX = 0.9
+
+    MAGIC_WEIGHT_PROB = 0.2
+    MAX_MAGIC_WEIGHTS = 2
+
+    INTERLOPER_PROB = 0.3
+    MAX_INTERLOPERS = 5
+
+    descriptions: list[str] = []
+
+    split_bodies_info: list[tuple[str, int]] = []
+
+    for _ in range(MAX_SPLIT_BODIES):
+        if np.random.random() < SPLIT_PROB:
+            split_idx = np.random.randint(low=0, high=len(to_disrupt))
+            disrupted.pop(split_idx)
+            split_body = to_disrupt.pop(split_idx)
+            n_split = np.random.randint(2, MAX_SPLIT_TO)
+            split_bodies_info.append((split_body.name, n_split))
+            debris_weights = np.random.random((n_split,))
+            radii_debris: NDArray = ((split_body.radius ** 3) * debris_weights / debris_weights.sum()) ** (1/3)
+            m_debris: NDArray = split_body.m * debris_weights / debris_weights.sum()
+            m_debris = m_debris.reshape((-1, 1))
+            # debris positions in the COM coordinate system, uniformly across r_start ring
+            r_start = 0.01  # AU
+            phis = np.linspace(0, 2 * np.pi, n_split + 1)[:-1]
+            phi_step = phis[1] - phis[0]
+            r_debris = np.concatenate(
+                [
+                    (r_start * np.cos(phis)).reshape((-1, 1)),
+                    (r_start * np.sin(phis)).reshape((-1, 1)),
+                ],
+                axis=1,
+            )
+            # debris momenta in the COM coordinate system
+            p_debris = np.zeros_like(r_debris)
+            for i in range(n_split - 1):
+                p_phi_min = phis[i] - phi_step * 0.45  # generally everyone is going outward
+                p_phi_max = phis[i] + phi_step * 0.45
+                p_phi = p_phi_min + np.random.random() * (p_phi_max - p_phi_min)
+                p_len = np.random.random()
+                p_debris[i, 0] = p_len * np.cos(p_phi)
+                p_debris[i, 1] = p_len * np.sin(p_phi)
+            p_debris[-1, :] = -(p_debris[:-1, :]).sum(axis=0)  # conservation of momentum
+
+            m_prod_mat = m_debris @ m_debris.T
+            dist_mat = _distance_matrix(r_debris[:, 0], r_debris[:, 1])
+            potential_energy_contributions = -G * m_prod_mat / dist_mat
+            potential_energy_contributions[np.isinf(potential_energy_contributions)] = 0.0
+            potential_energy_contributions[np.isnan(potential_energy_contributions)] = 0.0
+            potential_energy = potential_energy_contributions.sum()
+            split_energy_max = SPLIT_ENERGY_MAX  # if split_body.name != "Sun" else SPLIT_ENERGY_MAX * 0.1
+            debris_kinetic_energy = - potential_energy * (
+                SPLIT_ENERGY_MIN + np.random.random() * (split_energy_max - SPLIT_ENERGY_MIN)
+            )
+            generated_kinetic_energy = (0.5 * (p_debris[:, 0] ** 2 + p_debris[:, 1] ** 2) / m_debris.T).sum()
+            print(f"Debris energy is {100 * debris_kinetic_energy / np.abs(potential_energy):.2f} % of gravitational potential energy")
+            p_debris = p_debris * np.sqrt(
+                debris_kinetic_energy / generated_kinetic_energy
+            )  # energy deposit from explosion
+
+            for i in range(n_split):
+                disrupted.append(
+                    Body(
+                        name=f"{split_body.name} debris #{i}",
+                        color=split_body.color,
+                        m=m_debris[i, 0],
+                        r_0=r_debris[i, :] + split_body.r_0,
+                        v_0=(p_debris[i, :] / m_debris[i]) + split_body.v_0,
+                        radius=radii_debris[i],
+                        control_body_name=split_body.name,
+                    )
+                )
+
+    if split_bodies_info:
+        descriptions.append(
+            ", ".join([f"{name} is shattered into {n_split} pieces" for name, n_split in split_bodies_info])
+        )
+
+    return disrupted, control, ";".join(descriptions)
+
+
+if __name__ == "__main__":
+    bodies = SOLAR_SYSTEM[:3]
+    simulate_trajectories(bodies, 1, 1)
+    print(*generate_disruption(bodies))
