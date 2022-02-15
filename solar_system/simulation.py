@@ -283,13 +283,13 @@ def generate_disruption(bodies: list[Body], t_disruption_years: float) -> tuple[
     to_disrupt = [b.successor() for b in bodies]
     disrupted = to_disrupt.copy()
 
-    SPLIT_PROB = 0.4
-    MAX_SPLIT_TO = 6
+    SPLIT_PROB = 0.5
+    MAX_SPLIT_TO = 7
     MAX_SPLIT_BODIES = 5
-    SPLIT_ENERGY_MIN = 0.2  # relative to debris potential energy after split
+    SPLIT_ENERGY_MIN = 0.3  # relative to debris potential energy after split
     SPLIT_ENERGY_MAX = 0.9
 
-    MAX_VISITORS = 3
+    MAX_VISITORS = 4
     VISITOR_MIN_MASS = 0.1
     VISITOR_MAX_MASS = 2
     VISITOR_R_SPAWN_MIN = 45
@@ -374,7 +374,7 @@ def generate_disruption(bodies: list[Body], t_disruption_years: float) -> tuple[
     for i in range(n_visitors):
         r_spawn = random_between(VISITOR_R_SPAWN_MIN, VISITOR_R_SPAWN_MAX)
         phi_spawn = random_between(0, 2 * np.pi)
-        t_impact = 0.3 + np.random.random() * 0.3 * t_disruption_years
+        t_impact = 0.3 + np.random.random() * 0.5 * t_disruption_years
         v_spawn = r_spawn / t_impact
         delta_theta = np.arctan(30 / r_spawn)
         theta = phi_spawn + np.pi + random_between(-delta_theta, delta_theta)
