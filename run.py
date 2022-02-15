@@ -47,8 +47,7 @@ def main():
         traceback.print_exc()
         output_file = video_quiet
 
-    msg = "SOLAR SYSTEM DISRUPTION:\n\n"
-    msg += "\n".join(description)
+    msg = "SOLAR SYSTEM DISRUPTION:\n\n" + description
     telegram_bot.send_to_channel(msg, output_file)
 
 

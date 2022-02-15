@@ -364,9 +364,13 @@ def generate_disruption(bodies: list[Body], t_disruption_years: float) -> tuple[
                 )
 
     if split_bodies_info:
-        descriptions.append(
-            ", ".join([f"{name} is shattered into {n_split} pieces" for name, n_split in split_bodies_info])
-        )
+        first, *rest = split_bodies_info
+        first_name, first_n_split = first
+        split_strs = [f"{first_name.upper()} IS SHATTERED INTO {first_n_split} PIECES"]
+        for name, n_split in rest:
+            split_strs.append(f"{name.upper()} - INTO {n_split}")
+        boom_emojis = ["💥", "💣", "✨"]
+        descriptions.append(boom_emojis[np.random.randint(0, len(boom_emojis))] + " " + ", ".join(split_strs))
 
     n_visitors = np.random.randint(1, MAX_VISITORS)
     visitor_colors = ["#114a6f", "#459eb0", "#904449", "#db8183"][:n_visitors]
@@ -393,9 +397,14 @@ def generate_disruption(bodies: list[Body], t_disruption_years: float) -> tuple[
         )
 
     masses_str = ', '.join([f'{m:.1f}' for m in visitor_masses])
-    descriptions.append(f"{n_visitors} visitors with masses {masses_str} M☉")
+    if n_visitors == 1:
+        visitors_str = f"VISITOR WITH MASS {masses_str}M☉"
+    else:
+        visitors_str = f"{n_visitors} VISITORS WITH MASSES {masses_str} M☉"
+    visitors_emojis = ["🌠", "☄️", "🌀", "💫", "⭐"]
+    descriptions.append(visitors_emojis[np.random.randint(0, len(visitors_emojis))] + " " + visitors_str)
 
-    return disrupted, control, ";".join(descriptions)
+    return disrupted, control, "\n".join(descriptions)
 
 
 if __name__ == "__main__":
