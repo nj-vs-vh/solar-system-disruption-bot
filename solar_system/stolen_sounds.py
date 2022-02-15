@@ -25,6 +25,7 @@ def download(output: Path, duration: float):
 
     print("Downloading stream...")
     ffmpeg = subprocess.Popen(["ffmpeg", "-i", manifest_url, "-c", "copy", str(output), "-y"])
+    print(f"Sleeping for {duration}")
     time.sleep(duration + 15)
     ffmpeg.send_signal(signal.SIGINT)
     ffmpeg.wait()

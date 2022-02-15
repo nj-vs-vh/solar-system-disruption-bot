@@ -76,52 +76,86 @@ class Camera:
         ax.set_xlim(x_c - halfwidth, x_c + halfwidth)
         ax.set_ylim(y_c - halfwidth, y_c + halfwidth)
 
-    def create_timeline(self, bodies: list[Body], init_scale: float) -> NDArray:  # (nsteps, 3): x_c, y_c, scale
-        bodies = [b for b in bodies if not b.name.startswith("Visitor")]
+    def create_movement(
+        self,
+        bodies_disrupted: list[Body],
+        bodies_calm: list[Body],
+        init_scale: float,
+        steps_per_frame: int,
+    ) -> NDArray:  # (nsteps, 3): x_c, y_c, scale
+        def mean_relative_r_from_bodies(bodies: list[Body]):
+            calm_positions = np.concatenate([b.position(0).reshape((1, -1)) for b in bodies])
+            calm_r_from_com = np.sqrt(calm_positions[:, 0] ** 2 + calm_positions[:, 1] ** 2)
+            return np.mean(calm_r_from_com / calm_r_from_com[-1])
 
-        def get_center_range(coord: int):
-            traj_sample = np.zeros((bodies[0].trajectory_length, len(bodies)))
-            masses = np.array([b.m for b in bodies])
-            for i_body, b in enumerate(bodies):
+        mean_relative_r_calm_start = mean_relative_r_from_bodies(bodies_calm)
+        mean_relative_r_calm_end = mean_relative_r_from_bodies(bodies_calm[:7])  # up to Jupiter
+
+        print(f"Max mean relative R: {mean_relative_r_calm_start} -> {mean_relative_r_calm_end}")
+
+        bodies_disrupted = [b for b in bodies_disrupted if not b.name.startswith("Visitor")]
+
+        def get_center(coord: int) -> tuple[NDArray, NDArray]:
+            traj_sample = np.zeros((bodies_disrupted[0].trajectory_length, len(bodies_disrupted)))
+            masses = np.array([b.m for b in bodies_disrupted])
+            for i_body, b in enumerate(bodies_disrupted):
                 traj_sample[:, i_body] = b.trajectory[:, coord]
 
-            center_preliminary = np.mean(traj_sample * masses, axis=1) / masses.sum()
-            MAX_DELTA = 25
-            bad_mask = np.abs(traj_sample - center_preliminary.reshape((-1, 1))) > MAX_DELTA
-            for i_step in range(bodies[0].trajectory_length):
-                traj_sample[i_step, bad_mask[i_step, :]] = center_preliminary[i_step]
-            median_masked = np.median(traj_sample, axis=1)
-            max_delta_masked = 1.1 * np.max(median_masked.reshape((-1, 1)) - traj_sample, axis=1)
-            MOVING_AVERAGE_WINDOW = 31
-            median_masked = np.convolve(median_masked, np.ones(MOVING_AVERAGE_WINDOW) / MOVING_AVERAGE_WINDOW, 'same')
-            max_delta_masked = np.convolve(max_delta_masked, np.ones(MOVING_AVERAGE_WINDOW) / MOVING_AVERAGE_WINDOW, 'same')
-            return median_masked, max_delta_masked
+            weights = masses ** (2 / 3)
+            com = np.sum(traj_sample * weights, axis=1) / weights.sum()
+            traj_samle_relative_to_com = traj_sample - com.reshape((-1, 1))
+            return com, traj_samle_relative_to_com
 
-        x_center, x_delta = get_center_range(0)
-        y_center, y_delta = get_center_range(1)
-        x_center[0] = 0.0
-        y_center[0] = 0.0
-        std = np.minimum(x_delta, y_delta)
-        scale = init_scale * std / std[0]
-        timeline = np.concatenate(
+        x_com, x_traj_sample_rel = get_center(0)
+        y_com, y_traj_sample_rel = get_center(1)
+        x_com[0] = 0.0
+        y_com[0] = 0.0
+
+        r_from_com_sample = np.sqrt(x_traj_sample_rel**2 + y_traj_sample_rel**2)
+
+        r_camera = []
+        for i_step in range(bodies_disrupted[0].trajectory_length):
+            r_bodies = np.sort(r_from_com_sample[i_step, :])
+            #                       sum of R up to ith     n umber of summed terms       normalizing terms to max R
+            mean_relative_r_up_to = np.cumsum(r_bodies) / (1 + np.arange(len(r_bodies))) / r_bodies
+            min_mean_relative_r = mean_relative_r_calm_start + (i_step / bodies_disrupted[0].trajectory_length) * (
+                mean_relative_r_calm_end - mean_relative_r_calm_start
+            )
+            min_mean_relative_r *= 0.6
+            r_bodies_in_frame = r_bodies[mean_relative_r_up_to > min_mean_relative_r]
+            r_camera.append(r_bodies_in_frame.max())
+
+        r_camera = np.array(r_camera)
+
+        scale = r_camera / self.full_halfwidth
+        scale[: 2 * steps_per_frame] = init_scale
+        scale[scale > 1] = 1 + (scale[scale > 1] - 1) * 0.1
+
+        movement = np.concatenate(
             [
-                x_center.reshape((-1, 1)),
-                y_center.reshape((-1, 1)),
+                x_com.reshape((-1, 1)),
+                y_com.reshape((-1, 1)),
                 scale.reshape((-1, 1)),
             ],
             axis=1,
         )
 
-        def smooth(param: NDArray) -> NDArray:
+        def smooth(param: NDArray, spline_points: int, is_quadratic: bool = False) -> NDArray:
             length = len(param)
-            SPLINE_POINTS = 3
+            MOVING_AVERAGE_WINDOW = 5 * steps_per_frame  # simulation steps
+            param_ma = np.convolve(param, np.ones(MOVING_AVERAGE_WINDOW) / MOVING_AVERAGE_WINDOW, 'valid')
+            valid_ma_start = int(MOVING_AVERAGE_WINDOW / 2)
+            param[valid_ma_start : valid_ma_start + len(param_ma)] = param_ma
             indices = np.arange(0, length)
-            sample_idx = np.linspace(0, length - 1, SPLINE_POINTS).astype(np.int64)
-            return interpolate.interp1d(x=indices[sample_idx], y=param[sample_idx], kind='quadratic')(indices)
+            sample_idx = np.linspace(0, length - 1, spline_points).astype(np.int64)
+            return interpolate.interp1d(
+                x=indices[sample_idx], y=param[sample_idx], kind='quadratic' if is_quadratic else 'linear'
+            )(indices)
 
-        for i in range(3):
-            timeline[:, i] = smooth(timeline[:, i])
-        return timeline
+        movement[:, 0] = smooth(movement[:, 0], spline_points=8, is_quadratic=True)
+        movement[:, 1] = smooth(movement[:, 1], spline_points=8, is_quadratic=True)
+        movement[:, 2] = smooth(movement[:, 2], spline_points=4, is_quadratic=False)
+        return movement
 
 
 def animate_trajectories(
@@ -139,7 +173,7 @@ def animate_trajectories(
     fig.text(
         0.99,
         0.01,
-        "sounds stolen from 65 Wreckage System stream",
+        "All sounds stolen from 65dos Wreckage Systems stream",
         ha="right",
         va="bottom",
         color="w",
@@ -150,11 +184,13 @@ def animate_trajectories(
     dbs_disrupted = [DrawedBody.from_body(b, ax) for b in bodies_disrupted]
 
     camera = Camera.from_bodies(bodies_calm)
-    camera_scale_calm_start = 1.01 / camera.full_halfwidth
-    camera_scale_calm_end = 1.01
+    camera_scale_calm_start = 1 / camera.full_halfwidth  # starting at 1 AU
+    camera_scale_calm_end = 1  # ending at full solar system
     camera.apply(ax)
 
-    camera_timeline = camera.create_timeline(bodies_disrupted, init_scale=camera_scale_calm_end)
+    camera_movement = camera.create_movement(
+        bodies_disrupted, bodies_calm, init_scale=camera_scale_calm_end, steps_per_frame=int(days_per_frame / t_step)
+    )
 
     n_calm_steps = bodies_calm[0].trajectory_length - 1
     n_disr_steps = bodies_disrupted[0].trajectory_length
@@ -166,7 +202,7 @@ def animate_trajectories(
 
         current_day = frame * days_per_frame
         simulation_date = date.fromordinal(int(1 + current_day))
-        time_text.set_text(f"Y {simulation_date.year : <6} M {simulation_date.month : <6} D {simulation_date.day}")
+        time_text.set_text(f"Y {simulation_date.year : <4} M {simulation_date.month : <4} D {simulation_date.day}")
 
         current_step_global = int(current_day / t_step)
         for dbs, starts_at_step, length in zip(
@@ -182,14 +218,14 @@ def animate_trajectories(
                 else:
                     major_traj_line_len = np.pi * np.sqrt(np.sum(db.body.r_0**2)) / body_v0_abs
                 major_line_start_step = max(min(current_step_local - int(major_traj_line_len / t_step), length), 0)
-                if major_line_start_step == length:
-                    continue
+                # if major_line_start_step == length:
+                #     continue
                 db.traj_line_major.set(
                     data=(
                         db.body.x_traj[major_line_start_step : min(current_step_local, length - 1)],
                         db.body.y_traj[major_line_start_step : min(current_step_local, length - 1)],
                     ),
-                    visible=current_step_local < length,
+                    visible=current_step_local < length - 1,
                 )
                 db.traj_line_minor.set(
                     data=(
@@ -203,7 +239,7 @@ def animate_trajectories(
                         db.body.x_traj[min(current_step_local, length - 1)],
                         db.body.y_traj[min(current_step_local, length - 1)],
                     ),
-                    visible=current_step_local < length,
+                    visible=current_step_local < length - 1,
                 )
 
         if current_step_global < n_calm_steps:
@@ -211,11 +247,11 @@ def animate_trajectories(
                 np.log(camera_scale_calm_start)
                 + (np.log(camera_scale_calm_end) - np.log(camera_scale_calm_start))
                 * current_step_global
-                / (n_calm_steps - 10)
+                / (n_calm_steps)
             )
             camera.apply(ax)
         else:
-            x_c, y_c, scale = camera_timeline[current_step_global - n_calm_steps, :]
+            x_c, y_c, scale = camera_movement[current_step_global - n_calm_steps, :]
             camera.center = np.array([x_c, y_c])
             camera.scale = scale
             camera.apply(ax)

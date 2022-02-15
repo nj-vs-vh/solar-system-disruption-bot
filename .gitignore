@@ -3,3 +3,6 @@ venv/
 *.png
 *.mp4
 **/__pycache__/
+
+ssd-config.yaml
+*.log
