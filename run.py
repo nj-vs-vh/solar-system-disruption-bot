@@ -1,10 +1,12 @@
 from pathlib import Path
 import traceback
+import datetime
 
 from solar_system import simulation, stolen_sounds, visualization, config, telegram_bot
 
 
 def main():
+    print(f"\n\n==========================\n{datetime.datetime.now().isoformat(sep=' ')}")
     conf = config.load_config()
     t_step = conf['step_days']
     t_yrs_pre = conf['calm_years']

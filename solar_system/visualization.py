@@ -197,7 +197,7 @@ def animate_trajectories(
     frame_count = int((n_calm_steps + n_disr_steps) * t_step / days_per_frame)
 
     def update(frame: int):
-        if frame % 30 == 0:
+        if frame % 300 == 0:
             print(f"{100 * frame / frame_count : .0f} %")
 
         current_day = frame * days_per_frame
