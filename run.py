@@ -7,9 +7,9 @@ from solar_system import simulation, stolen_sounds, visualization, config, teleg
 def main():
     conf = config.load_config()
     t_step = conf['step_days']
+    days_per_frame = conf['days_per_frame']
     t_yrs_pre = conf['calm_years']
     t_yrs_post = conf['post_disruption_years']
-    days_per_frame = conf['days_per_frame']
 
     output_file = Path("simulation.mp4")
 
