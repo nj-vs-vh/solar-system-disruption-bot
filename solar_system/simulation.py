@@ -278,21 +278,20 @@ def random_between(min_: float, max_: float) -> float:
 
 
 def generate_disruption(bodies: list[Body], t_disruption_years: float) -> tuple[list[Body], list[Body], str]:
-    # will be simulated further without disruption
-    control = [b.successor() for b in bodies]
+    control = [b.successor() for b in bodies]  # will be simulated further without disruption
     to_disrupt = [b.successor() for b in bodies]
     disrupted = to_disrupt.copy()
 
-    SPLIT_PROB = 0.5
+    SPLIT_PROB = 0.2
     MAX_SPLIT_TO = 7
-    MAX_SPLIT_BODIES = 5
+    MAX_SPLIT_BODIES = 6
     SPLIT_ENERGY_MIN = 0.3  # relative to debris potential energy after split
     SPLIT_ENERGY_MAX = 0.9
 
     MAX_VISITORS = 4
     VISITOR_MIN_MASS = 0.1
-    VISITOR_MAX_MASS = 2
-    VISITOR_R_SPAWN_MIN = 45
+    VISITOR_MAX_MASS = 3
+    VISITOR_R_SPAWN_MIN = 50  # AU
     VISITOR_R_SPAWN_MAX = 70
 
     descriptions: list[str] = []
