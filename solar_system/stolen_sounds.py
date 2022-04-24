@@ -11,11 +11,14 @@ def download(output: Path, duration: float):
     print("Listing video formats")
     res = subprocess.run(["youtube-dl", "--list-formats", WRECKAGE_SYSTEM_STREAM_URL], capture_output=True)
     stdout = res.stdout.decode("utf-8")
+    format_code = None
     for line in stdout.splitlines():
         parts = line.split()
         if parts[1] == 'mp4':
             format_code = parts[0]
             break
+    if format_code is None:
+        raise RuntimeError(f"Unable to list formats with youtube-dl, output:\n'{res.stdout}'")
 
     print("Obtaining manifest")
     res = subprocess.run(["youtube-dl", "-f", format_code, "-g", WRECKAGE_SYSTEM_STREAM_URL], capture_output=True)
