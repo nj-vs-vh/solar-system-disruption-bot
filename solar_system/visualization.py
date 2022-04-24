@@ -101,8 +101,7 @@ class Camera:
             for i_body, b in enumerate(bodies_disrupted):
                 traj_sample[:, i_body] = b.trajectory[:, coord]
 
-            weights = masses ** (2 / 3)
-            com = np.sum(traj_sample * weights, axis=1) / weights.sum()
+            com = np.sum(traj_sample * masses, axis=1) / masses.sum()
             traj_samle_relative_to_com = traj_sample - com.reshape((-1, 1))
             return com, traj_samle_relative_to_com
 

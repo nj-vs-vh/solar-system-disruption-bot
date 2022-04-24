@@ -2,5 +2,7 @@ step_days: 1
 calm_years: 30
 post_disruption_years: 150
 days_per_frame: 14
+add_audio: True
+send_to_channel: False
 telegram_api_token: xxx
 telegram_channel_id: xxx
