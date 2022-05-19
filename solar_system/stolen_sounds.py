@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 
-WRECKAGE_SYSTEM_STREAM_URL = "https://www.youtube.com/watch?v=FauuCZlN2IA"
+WRECKAGE_SYSTEM_STREAM_URL = "https://www.youtube.com/watch?v=lF_SsHIanGM"
 
 
 def download(output: Path, duration: float):
