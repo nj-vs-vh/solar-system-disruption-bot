@@ -6,3 +6,4 @@ venv/
 
 ssd-config.yaml
 *.log
+*.mp3

@@ -4,34 +4,26 @@ import time
 from pathlib import Path
 
 
-WRECKAGE_SYSTEM_STREAM_URL = "https://www.youtube.com/watch?v=mcU07FhGS0E"
+WRECKAGE_SYSTEM_STREAM_URL = "https://wreckage-systems.club/radio/8000/stream192.mp3"
 
 
 def download(output: Path, duration: float):
-    print("Listing video formats")
-    res = subprocess.run(["youtube-dl", "--list-formats", WRECKAGE_SYSTEM_STREAM_URL], capture_output=True)
-    stdout = res.stdout.decode("utf-8")
-    format_code = None
-    for line in stdout.splitlines():
-        parts = line.split()
-        if parts[1] == 'mp4':
-            format_code = parts[0]
-            break
-    if format_code is None:
-        raise RuntimeError(f"Unable to list formats with youtube-dl, output:\n'{res.stdout}'")
-
-    print("Obtaining manifest")
-    res = subprocess.run(["youtube-dl", "-f", format_code, "-g", WRECKAGE_SYSTEM_STREAM_URL], capture_output=True)
-    stdout = res.stdout.decode("utf-8")
-    manifest_url = stdout.strip()
-    print(format_code)
-
     print("Downloading stream...")
-    ffmpeg = subprocess.Popen(["ffmpeg", "-i", manifest_url, "-c", "copy", str(output), "-y"])
-    print(f"Sleeping for {duration}")
-    time.sleep(duration + 15)
-    ffmpeg.send_signal(signal.SIGINT)
-    ffmpeg.wait()
+    cmd = [
+        "ffmpeg",
+        "-t",
+        str(duration + 10),
+        "-i",
+        str(WRECKAGE_SYSTEM_STREAM_URL),
+        "-c",
+        "copy",
+        "-map",
+        "a",
+        str(output),
+        "-y",
+    ]
+    print("$ " + " ".join(cmd))
+    subprocess.run(cmd)
 
 
 def add_audio(simulation_vid: Path, audio: Path, output: Path):

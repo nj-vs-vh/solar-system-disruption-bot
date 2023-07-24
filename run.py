@@ -42,7 +42,7 @@ def main():
     if add_audio:
         try:
             print("Retrieving audio")
-            audio = Path("audio.mp4")
+            audio = Path("audio.mp3")
             approx_video_length = (t_yrs_pre + t_yrs_post) * 365 / days_per_frame / 30
             print(f"Video length ~{approx_video_length} sec")
             stolen_sounds.download(audio, duration=approx_video_length * 1.3)

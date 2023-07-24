@@ -172,7 +172,7 @@ def animate_trajectories(
     fig.text(
         0.99,
         0.01,
-        "All sounds stolen from 65dos Wreckage Systems stream",
+        "Sounds stolen from 65dos Wreckage Systems stream",
         ha="right",
         va="bottom",
         color="w",
@@ -201,7 +201,9 @@ def animate_trajectories(
 
         current_day = frame * days_per_frame
         simulation_date = date.fromordinal(int(1 + current_day))
-        time_text.set_text(f"Y_{simulation_date.year :_>3} / M_{simulation_date.month :_>2} / D_{simulation_date.day :_>2}")
+        time_text.set_text(
+            f"Y_{simulation_date.year :_>3} / M_{simulation_date.month :_>2} / D_{simulation_date.day :_>2}"
+        )
 
         current_step_global = int(current_day / t_step)
         for dbs, starts_at_step, length in zip(
