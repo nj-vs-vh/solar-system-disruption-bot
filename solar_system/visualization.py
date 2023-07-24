@@ -168,7 +168,7 @@ def animate_trajectories(
 
     ax: plt.Axes = fig.add_axes((0, 0, 1, 1), facecolor="k")
 
-    time_text = fig.text(0.01, 0.01, "", ha="left", va="bottom", color="w", fontfamily="Ubuntu")
+    time_text = fig.text(0.01, 0.01, "", ha="left", va="bottom", color="w", fontfamily="monospace")
     fig.text(
         0.99,
         0.01,
@@ -176,7 +176,7 @@ def animate_trajectories(
         ha="right",
         va="bottom",
         color="w",
-        fontfamily="Ubuntu",
+        fontfamily="monospace",
     )
 
     dbs_calm = [DrawedBody.from_body(b, ax) for b in bodies_calm]
@@ -201,7 +201,7 @@ def animate_trajectories(
 
         current_day = frame * days_per_frame
         simulation_date = date.fromordinal(int(1 + current_day))
-        time_text.set_text(f"Y {simulation_date.year : <4} M {simulation_date.month : <4} D {simulation_date.day}")
+        time_text.set_text(f"Y_{simulation_date.year :_>3} / M_{simulation_date.month :_>2} / D_{simulation_date.day :_>2}")
 
         current_step_global = int(current_day / t_step)
         for dbs, starts_at_step, length in zip(
