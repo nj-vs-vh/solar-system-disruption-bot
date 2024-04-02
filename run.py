@@ -5,7 +5,7 @@ import datetime
 from solar_system import simulation, stolen_sounds, visualization, config, telegram_bot
 
 
-def main():
+def main() -> None:
     print(f"\n\n==========================\n{datetime.datetime.now().isoformat(sep=' ')}")
     conf = config.load_config()
     t_step = conf['step_days']
@@ -60,4 +60,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        print("Error in main!")
+        print(traceback.format_exc())
