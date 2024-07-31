@@ -5,8 +5,8 @@ import datetime
 from solar_system import simulation, stolen_sounds, visualization, config, telegram_bot
 
 
-def main():
-    print(f"\n\n==========================\n{datetime.datetime.now().isoformat(sep=' ')}")
+def main() -> None:
+    print(f"{datetime.datetime.now().isoformat(sep=' ')}")
     conf = config.load_config()
     t_step = conf['step_days']
     days_per_frame = conf['days_per_frame']
@@ -33,10 +33,10 @@ def main():
             )
             break
         except Exception as e:
-            print(f"\n\nERROR DURING SIMULATION / VIDEO EXPORT ({i_try}/{n_try} try): {e}")
+            print(f"\nERROR DURING SIMULATION OR VIDEO EXPORT ({i_try}/{n_try} try): {e}")
             traceback.print_exc()
             if i_try == n_try - 1:
-                print("\n\nNO MORE TRIES, EXITING")
+                print("\nNO MORE TRIES, EXITING")
                 return
 
     if add_audio:
@@ -48,7 +48,7 @@ def main():
             stolen_sounds.download(audio, duration=approx_video_length * 1.3)
             stolen_sounds.add_audio(video_quiet, audio, output_video)
         except Exception as e:
-            print(f"\n\nERROR WHILE STEALING AUDIO: {e}")
+            print(f"\nERROR WHILE STEALING AUDIO: {e}")
             traceback.print_exc()
             output_video = video_quiet
     else:
@@ -57,6 +57,8 @@ def main():
     if send_to_channel:
         msg = "SOLAR SYSTEM DISRUPTION:\n\n" + description
         telegram_bot.send_to_channel(msg, output_video)
+
+    print("DONE\n\n")
 
 
 if __name__ == "__main__":
