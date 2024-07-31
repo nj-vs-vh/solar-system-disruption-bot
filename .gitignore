@@ -7,3 +7,5 @@ venv/
 ssd-config.yaml
 *.log
 *.mp3
+metadata.json
+plot_baw_redis_stats.py
